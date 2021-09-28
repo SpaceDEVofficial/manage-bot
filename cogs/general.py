@@ -1,9 +1,15 @@
+import asyncio
 import os
 import platform
 import discord
 from PycordPaginator import Paginator
 from discord.ext.commands import command, Cog
-
+from pycord_components import (
+    Button,
+    ButtonStyle,
+    Select,
+    SelectOption,
+)
 class manage(Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -18,7 +24,7 @@ class manage(Cog):
         guild = ctx.guild
         mod = discord.utils.get(guild.roles, name="Mod")
         manage = discord.Embed(title="1페이지( 서버관리 )",
-                            description="• s.warn @user reason(Option)\n• s.unwarn @user reaso(Option) \n\nThis command require {} role".format(mod.mention),
+                            description="• s.warn @user reason(Option)\n• s.unwarn @user reason(Option) \n\nThis command require {} role".format(mod.mention),
                              colour=discord.Colour.blue()
                             )
 
@@ -133,6 +139,45 @@ class manage(Cog):
             text=f"Created at: {time}"
         )
         await ctx.reply(embed=embed)
+
+    @command()
+    async def invite(self,ctx):
+        bots = {
+            "태시아 봇":"https://shrt.kro.kr/태시아",
+            "GPROM":"https://discord.com/api/oauth2/authorize?client_id=850259629316505650&permissions=8&scope=bot",
+            "Konosuba":"https://shrt.kro.kr/konosuba",
+            "PUBG Live":"https://shrt.kro.kr/pubglive",
+            "lia":"https://lia.vfnets.com/invite"
+        }
+        bots_desc = {
+            "태시아 봇" : "서버관리가 주목적이며 부가적으로 주식기능도 있습니다!",
+            "GPROM": "서로에게 이득이 되는 좋은 홍보봇.",
+            "Konosuba":"넥슨의 '코노스바 모바일 판타스틱 데이즈'를 디스코드에서 만나보세요.",
+            "PUBG Live":"배틀그라운드 매치가 끝날때마다 해당 매치의 결과를 분석하여 실시간으로 알려드립니다.",
+            "lia":"다기능 통합 봇 Lia_"
+        }
+        msg = await ctx.reply(
+            "Which bot do you want to invite?",
+            components=[
+                Select(
+                    placeholder="Select",
+                    options=[
+                        SelectOption(label=key, value=value, description=bots_desc[key]) for key,value
+                        in bots.items()
+                    ],
+                ),
+            ],
+        )
+        try:
+            interaction = await self.bot.wait_for("select_option",
+                                                  check=lambda i: i.user.id == ctx.author.id and i.message.id == msg.id,
+                                                  timeout=30)
+            value = interaction.values[0]
+            # stamp = str(time.mktime(datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S').timetuple()))[:-2]
+        except asyncio.TimeoutError:
+            await msg.delete()
+            return
+        await msg.edit("Here we go!",components=[Button(label="Invite",style=5,url=value)])
 
 def setup(bot):
     bot.add_cog(manage(bot))

@@ -21,7 +21,7 @@ class manage(Cog):
 
     @command()
     @commands.has_role('Mod')
-    async def warn(self, ctx,target:discord.Member,reason="No Reason"):
+    async def warn(self, ctx,target:discord.Member,*,reason="No Reason"):
         msg = await ctx.reply(
             "정말로 `{user}`에게 경고를 부여할까요?".format(user=target),
             components=[
@@ -63,7 +63,7 @@ class manage(Cog):
                 punish = "🔇 영구 뮤트"
                 await self.bot.db_con.execute("INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
                                               (target.id, reason, end,timestamp))
-            await self.bot.db_con.execute("INSERT INTO warn_list(user_id,reason) VALUES (?,?)", (target.id, reason +" " +punish))
+            await self.bot.db_con.execute("INSERT INTO warn_list(user_id,reason,stamp) VALUES (?,?,?)", (target.id, reason +" " +punish,timestamp))
             await self.bot.db_con.commit()
             await cur.close()
             guild = ctx.guild
@@ -95,7 +95,7 @@ class manage(Cog):
 
     @command()
     @commands.has_role('Mod')
-    async def unwarn(self,ctx,target:discord.Member,reason="No reason"):
+    async def unwarn(self,ctx,target:discord.Member,*,reason="No reason"):
         cur = await self.bot.db_con.execute("SELECT * FROM warn_list WHERE user_id = ?",(target.id,))
         datas = await cur.fetchall()
         if datas == []:
@@ -107,7 +107,7 @@ class manage(Cog):
                     Select(
                         placeholder="Select",
                         options=[
-                            SelectOption(label=target.display_name, value=i[2],description="경고사유 - {}".format(i[1])) for i in datas
+                            SelectOption(label=target.display_name, value=i[3],description="경고사유 - {}".format(i[1])) for i in datas
                         ],
                     ),
             ],
@@ -115,12 +115,12 @@ class manage(Cog):
         try:
             interaction = await self.bot.wait_for("select_option", check=lambda i: i.user.id == ctx.author.id and i.message.id == msg.id,timeout=30)
             value = interaction.values[0]
-            stamp = str(time.mktime(datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S').timetuple()))[:-2]
+            #stamp = str(time.mktime(datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S').timetuple()))[:-2]
         except asyncio.TimeoutError:
             await msg.delete()
             return
-        await self.bot.db_con.execute("DELETE FROM warn_list WHERE user_id = ? AND dates = ?",(target.id,value))
-        await self.bot.db_con.execute("DELETE FROM mute_list WHERE user_id = ? AND stamp = ?", (target.id, stamp))
+        await self.bot.db_con.execute("DELETE FROM warn_list WHERE user_id = ? AND stamp = ?",(target.id,value))
+        await self.bot.db_con.execute("DELETE FROM mute_list WHERE user_id = ? AND stamp = ?", (target.id, value))
         await self.bot.db_con.commit()
         guild = ctx.guild
         mutedRole = discord.utils.get(guild.roles, name="Muted")
@@ -135,6 +135,130 @@ class manage(Cog):
         await msg.edit("✅ SUCCESS!",embed=em,components=[])
         await self.bot.get_channel(884219305942740992).send(embed=em)
 
+    @command()
+    @commands.has_role('Mod')
+    async def ban(self,ctx,target:discord.Member,*,reason="No reason"):
+        msg = await ctx.reply(
+            "Are you sure ban this `{user}` user?".format(user=target),
+            components=[
+                Button(label="Confirm", custom_id="yes", style=1),
+                Button(label="Cancel", custom_id="no", style=4)
+            ]
+        )
+        try:
+            interaction = await self.bot.wait_for("button_click",
+                                                  check=lambda i: i.user.id == ctx.author.id and i.message.id == msg.id,
+                                                  timeout=30)
+            name = interaction.custom_id
+        except asyncio.TimeoutError:
+            await msg.delete()
+            return
+        if name == "yes":
+            await target.ban(reason=reason)
+            await target.send("당신은 SpaceDEV오피셜 서버에서 밴당하셨습니다. \n밴 사유는 아래와 같으며 충분한 고려로 취한 처벌이오니 참고하시기 바랍니다.\n밴 사유 - {}".format(reason))
+            await msg.edit("✅ SUCCESS!",components=[])
+        else:
+            await msg.edit(
+                content=f"❎ Canceled.",
+                components=[Button(label="Canceled", style=4, disabled=True)]
+            )
+
+    @command()
+    @commands.has_role('Mod')
+    async def unban(self,ctx,*,reason="No Reason"):
+        bans = await ctx.guild.bans()
+        if bans == []:
+            await ctx.reply("Ban list is empty!")
+            return
+        msg = await ctx.reply(
+            "Select unban user",
+            components=[
+                Select(
+                    placeholder="Select",
+                    options=[
+                        SelectOption(label=i.user.name, value=i.user.id, description="밴사유 - {}".format(i.reason)) for i
+                        in bans
+                    ],
+                ),
+            ],
+        )
+        try:
+            interaction = await self.bot.wait_for("select_option", check=lambda i: i.user.id == ctx.author.id and i.message.id == msg.id,timeout=30)
+            value = interaction.values[0]
+            #stamp = str(time.mktime(datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S').timetuple()))[:-2]
+        except asyncio.TimeoutError:
+            await msg.delete()
+            return
+        user = await self.bot.fetch_user(int(value))
+        await ctx.guild.unban(user, reason=reason)
+        await user.send("안녕하세요. SpaceDEV팀입니다.\n밴 처벌이 무효화 되어 안내 DM을 발송합니다.\n아래 링크로 서버에 접속해주세요.\nhttps://shrt.kro.kr/discord")
+        await msg.edit("✅ SUCCESS!", components=[])
+
+    @command()
+    @commands.has_role('Mod')
+    async def kick(self, ctx, target: discord.Member, *, reason="No reason"):
+        msg = await ctx.reply(
+            "Are you sure kick this `{user}` user?".format(user=target),
+            components=[
+                Button(label="Confirm", custom_id="yes", style=1),
+                Button(label="Cancel", custom_id="no", style=4)
+            ]
+        )
+        try:
+            interaction = await self.bot.wait_for("button_click",
+                                                  check=lambda i: i.user.id == ctx.author.id and i.message.id == msg.id,
+                                                  timeout=30)
+            name = interaction.custom_id
+        except asyncio.TimeoutError:
+            await msg.delete()
+            return
+        if name == "yes":
+            await target.ban(reason=reason)
+            await target.send(
+                "당신은 SpaceDEV오피셜 서버에서 강제퇴장당하셨습니다. \n강제퇴장 사유는 아래와 같으며 충분한 고려로 취한 처벌이오니 참고하시기 바랍니다.\n강제퇴장 사유 - {}".format(reason))
+            await msg.edit("✅ SUCCESS!", components=[])
+        else:
+            await msg.edit(
+                content=f"❎ Canceled.",
+                components=[Button(label="Canceled", style=4, disabled=True)]
+            )
+
+    @command()
+    @commands.is_owner()
+    async def notice(self,ctx,*,value:str):
+        em = discord.Embed(
+            title="SpaceDEV Team Notice",
+            description=value,
+            color=discord.Color.from_rgb(237, 102, 149)
+        )
+        em.set_thumbnail(
+            url=ctx.guild.icon_url
+        )
+        chs = [884219294290935808,884219295855411200,884219296547504139,884219297491189771,888695083728261171]
+        msg = await ctx.reply(
+            "WWhere would you like to send it?",
+            components=[
+                Select(
+                    placeholder="Select",
+                    options=[
+                        SelectOption(label=self.bot.get_channel(i).name, value=str(i)) for i
+                        in chs
+                    ],
+                ),
+            ],
+        )
+        try:
+            interaction = await self.bot.wait_for("select_option",
+                                                  check=lambda i: i.user.id == ctx.author.id and i.message.id == msg.id,
+                                                  timeout=30)
+            value = interaction.values[0]
+            # stamp = str(time.mktime(datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S').timetuple()))[:-2]
+        except asyncio.TimeoutError:
+            await msg.delete()
+            return
+        print(value)
+        await self.bot.get_channel(int(value)).send(embed=em)
+        await msg.edit("✅ SUCCESS!",components=[])
 
 def setup(bot):
     bot.add_cog(manage(bot))
