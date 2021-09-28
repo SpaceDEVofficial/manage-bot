@@ -220,15 +220,6 @@ class Paginator:
                     await inter.edit_origin(
                         embed=self.embeds[self.index], components=self.get_components()
                     )
-            else:
-                if self.embeds == None:
-                    await inter.edit_origin(
-                        content=self.contents[self.index], components=self.get_components()
-                    )
-                else:
-                    await inter.edit_origin(
-                        embed=self.embeds[self.index], components=self.get_components()
-                    )
         else:
             if self.embeds == None:
                 await inter.edit_origin(

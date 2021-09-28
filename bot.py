@@ -8,14 +8,36 @@ from pycord_components import PycordComponents
 import config
 load_dotenv(verbose=True)
 
+create_warnlist_table = """ 
+CREATE TABLE IF NOT EXISTS warn_list (
+    user_id integer,                    
+    reason text,
+    dates text DEFAULT (strftime('%Y-%m-%d %H:%M:%S',datetime('now','localtime')))
+);"""
+create_muteist_table = """ 
+CREATE TABLE IF NOT EXISTS mute_list (
+    user_id integer,                 
+    reason text,
+    end_dates text,
+    dates text DEFAULT (strftime('%Y-%m-%d %H:%M',datetime('now','localtime')))
+);"""
 
 class MyBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        AutoCogs(self)
         self.remove_command("help")
+        AutoCogs(self)
+
+
+    async def check_db(self):
+        async with aiosqlite.connect("db/db.db") as con:
+            await con.execute(create_warnlist_table)
+            await con.execute(create_muteist_table)
+            await con.commit()
+
     async def on_ready(self):
         """Called upon the READY event"""
+        await self.check_db()
         await self.change_presence(status=discord.Status.online, activity=discord.Activity(name="SpaceDEV",
                                                                                                type=discord.ActivityType.listening))
         print("Bot is ready.")
