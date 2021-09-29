@@ -10,7 +10,7 @@ from pycord_components import (
     Select,
     SelectOption,
 )
-class manage(Cog):
+class general(Cog):
     def __init__(self, bot):
         self.bot = bot
 
@@ -180,4 +180,4 @@ class manage(Cog):
         await msg.edit("Here we go!",components=[Button(label="Invite",style=5,url=value)])
 
 def setup(bot):
-    bot.add_cog(manage(bot))
+    bot.add_cog(general(bot))

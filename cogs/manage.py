@@ -3,6 +3,7 @@ import datetime
 import time
 
 import discord
+#from discord.ext import tasks
 #from tools.PagiNation import Paginator
 from PycordPaginator import Paginator
 from discord.ext.commands import command, Cog
@@ -18,6 +19,7 @@ from pycord_components import (
 class manage(Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.mute = self.bot.loop.create_task(self.mute_loop())
 
     @command()
     @commands.has_role('Mod')
@@ -122,9 +124,6 @@ class manage(Cog):
         await self.bot.db_con.execute("DELETE FROM warn_list WHERE user_id = ? AND stamp = ?",(target.id,value))
         await self.bot.db_con.execute("DELETE FROM mute_list WHERE user_id = ? AND stamp = ?", (target.id, value))
         await self.bot.db_con.commit()
-        guild = ctx.guild
-        mutedRole = discord.utils.get(guild.roles, name="Muted")
-        await target.remove_roles(mutedRole)
         em = discord.Embed(
             title="경고가 취소됨",
             description="👮‍♂️ 경고취소자 - {admin}\n📌 대상 - {user}\n\n❔ 사유 - `{reason}`".format(
@@ -132,6 +131,20 @@ class manage(Cog):
             timestamp=datetime.datetime.now(),
             color=discord.Color.green()
         )
+        if len(datas) == 1:
+            guild = ctx.guild
+            mutedRole = discord.utils.get(guild.roles, name="Muted")
+            await target.remove_roles(mutedRole)
+            mem = discord.Embed(
+                title="뮤트처벌이 종료됨",
+                description="👮‍♂️ 처벌 종료자 - {admin}\n📌 대상 - {user}\n\n❔ 사유 - `{reason}`".format(
+                    admin=ctx.author.mention, user=target.mention, reason="경고취소로 인한 언뮤트"),
+                timestamp=datetime.datetime.now(),
+                color=discord.Color.green()
+            )
+            await self.bot.get_channel(884219305942740992).send(embed=mem)
+        else:
+            pass
         await msg.edit("✅ SUCCESS!",embed=em,components=[])
         await self.bot.get_channel(884219305942740992).send(embed=em)
 
@@ -259,6 +272,36 @@ class manage(Cog):
         print(value)
         await self.bot.get_channel(int(value)).send(embed=em)
         await msg.edit("✅ SUCCESS!",components=[])
+
+    async def mute_loop(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(60)
+            now = datetime.datetime.now()
+            current_time = now.strftime("%Y-%m-%d %H:%M")
+            cur = await self.bot.db_con.execute("SELECT * FROM mute_list")
+            datas = await cur.fetchall()
+            for i in datas:
+                if i[2] == current_time:
+                    user_cur = await self.bot.db_con.execute("SELECT * FROM mute_list WHERE user_id = ?",(int(i[0]),))
+                    user_datas = await user_cur.fetchall()
+                    if len(user_datas) >=2:
+                        await self.bot.db_con.execute("DELETE FROM mute_list WHERE user_id = ? AND stamp = ?",(int(i[0]),str(i[4])))
+                    else:
+                        await self.bot.db_con.execute("DELETE FROM mute_list WHERE user_id = ? AND stamp = ?",(int(i[0]),str(i[4])))
+                        guild = self.bot.get_guild(847729860881154078)
+                        member = guild.get_member(i[0])
+                        mutedRole = discord.utils.get(guild.roles, name="Muted")
+                        await member.remove_roles(mutedRole)
+                        em = discord.Embed(
+                            title="뮤트처벌이 종료됨",
+                            description="👮‍♂️ 처벌 종료자 - {admin}\n📌 대상 - {user}\n\n❔ 사유 - `{reason}`".format(
+                                admin=self.bot.user.mention, user=member.mention, reason="처벌 종료일로 인한 언뮤트"),
+                            timestamp=datetime.datetime.now(),
+                            color=discord.Color.green()
+                        )
+                        await self.bot.get_channel(884219305942740992).send(embed=em)
+                    await self.bot.db_con.commit()
 
 def setup(bot):
     bot.add_cog(manage(bot))
