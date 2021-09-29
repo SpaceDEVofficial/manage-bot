@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import os
 import platform
+import re
 import time
 
 import discord
@@ -15,7 +16,8 @@ from pycord_components import (
 )
 from antispam import AntiSpamHandler
 from antispam.ext import AntiSpamTracker
-
+LINKS = re.compile(r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+")
+INVITE = re.compile(r"(?:https?://)?discord(?:\.com/invite|app\.com/invite|\.gg)/?[a-zA-Z0-9]+/?")
 class modmail(Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -28,6 +30,7 @@ class modmail(Cog):
         self.bot.tracker = AntiSpamTracker(self.bot.handler,
                                       3)  # 3 Being how many 'punishment requests' before is_spamming returns True
         self.bot.handler.register_extension(self.bot.tracker)
+        self.count = []
 
     @Cog.listener()
     async def on_message(self,message:discord.Message):
@@ -142,14 +145,236 @@ class modmail(Cog):
             await ch.send(str(message.author) +": "+message.content)
             await message.reply("성공적으로 문의 티켓을 개설 및 전달하였습니다.")
         else:
-            ch_id = message.channel.topic
-            user = await self.bot.fetch_user(str(ch_id))
             if message.content == "s.종료":
+                ch_id = message.channel.topic
+                user = await self.bot.fetch_user(str(ch_id))
                 await user.send("관리자가 티켓을 종료하였습니다.\n추가적인 문의가 있으시다면 언제나 문의주십시요\n\n이 메세지에 답변하지 마세요.")
                 await message.channel.delete()
+                await user.send(f"{message.author.name}: {message.content}")
+                await message.add_reaction("✅")
                 return
-            await user.send(f"{message.author.name}: {message.content}")
-            await message.add_reaction("✅")
+            inv = INVITE.search(message.content)
+
+            if bool(inv):
+                await message.delete()
+                self.count.append(message.author.id)
+                if message.channel.topic is None:
+                    if self.count.count(message.author.id) <= 2:
+
+                        em = discord.Embed(
+                            title="앞메 감지 🚨",
+                            description="{}님이 앞메를 시도하려는 행위를 감지하였습니다.\n경고 - {}".format(message.author.mention,self.count.count(message.author.id)),
+                            colour=discord.Color.red()
+                        )
+                        await message.channel.send(embed=em)
+                        em = discord.Embed(
+                            title="앞메 감지 🚨",
+                            description="{}님이 앞메를 시도하려는 행위를 감지하였습니다.\n링크 - {}\n경고 - {}".format(message.author.mention,message.content,
+                                                                                      self.count.count(message.author.id)),
+                            colour=discord.Color.red()
+                        )
+                        await self.bot.get_channel(892742664506732574).send(embed=em)
+                    else:
+
+                        em = discord.Embed(
+                            title="앞메 감지 🚨",
+                            description="{}님이 앞메를 시도하려는 행위를 감지하였습니다.\n경고 - {}".format(message.author.mention,
+                                                                                      self.count.count(message.author.id)),
+                            colour=discord.Color.red()
+                        )
+                        await message.channel.send(embed=em)
+                        em = discord.Embed(
+                            title="앞메 감지 🚨",
+                            description="{}님이 앞메를 시도하려는 행위를 감지하였습니다.\n링크 - {}\n경고 - {}".format(message.author.mention,
+                                                                                               message.content,
+                                                                                               self.count.count(
+                                                                                                   message.author.id)),
+                            colour=discord.Color.red()
+                        )
+                        await self.bot.get_channel(892742664506732574).send(embed=em)
+                        target = message.author
+                        reason = "앞메 행위로 인한 경고"
+                        cur = await self.bot.db_con.execute("SELECT * FROM warn_list WHERE user_id = ?", (target.id,))
+                        datas = await cur.fetchall()
+                        print(datas)
+                        if datas == []:
+                            end = datetime.datetime.utcnow() + datetime.timedelta(days=3)
+                            end = end.strftime("%Y-%m-%d %H:%M")
+                            now = datetime.datetime.utcnow()
+                            now = now.strftime("%Y-%m-%d %H:%M:%S")
+                            timestamp = str(time.mktime(datetime.datetime.strptime(now, '%Y-%m-%d %H:%M:%S').timetuple()))[
+                                        :-2]
+                            punish = "🔇 3일 뮤트"
+                            await self.bot.db_con.execute(
+                                "INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
+                                (target.id, reason, end, timestamp))
+                        elif len(datas) == 1:
+                            end = datetime.datetime.utcnow() + datetime.timedelta(days=7)
+                            end = end.strftime("%Y-%m-%d %H:%M")
+                            now = datetime.datetime.utcnow()
+                            now = now.strftime("%Y-%m-%d %H:%M:%S")
+                            timestamp = str(time.mktime(datetime.datetime.strptime(now, '%Y-%m-%d %H:%M:%S').timetuple()))[
+                                        :-2]
+                            punish = "🔇 7일 뮤트"
+                            await self.bot.db_con.execute(
+                                "INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
+                                (target.id, reason, end, timestamp))
+                        else:
+                            end = "2100-12-31 23:59"
+                            now = datetime.datetime.utcnow()
+                            now = now.strftime("%Y-%m-%d %H:%M:%S")
+                            timestamp = str(time.mktime(datetime.datetime.strptime(now, '%Y-%m-%d %H:%M:%S').timetuple()))[
+                                        :-2]
+                            punish = "🔇 영구 뮤트"
+                            await self.bot.db_con.execute(
+                                "INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
+                                (target.id, reason, end, timestamp))
+                        await self.bot.db_con.execute("INSERT INTO warn_list(user_id,reason,stamp) VALUES (?,?,?)",
+                                                      (target.id, reason + " " + punish, timestamp))
+                        await self.bot.db_con.commit()
+                        await cur.close()
+                        guild = message.guild
+                        mutedRole = discord.utils.get(guild.roles, name="Muted")
+
+                        if not mutedRole:
+                            mutedRole = await guild.create_role(name="Muted")
+                            channels = guild.channels
+                            for channel in channels:
+                                await channel.set_permissions(mutedRole, speak=False, send_messages=False)
+                        await target.add_roles(mutedRole, reason=reason)
+                        em = discord.Embed(
+                            title="경고가 부여됨",
+                            description="👮‍♂️ 부여자 - {admin}\n📌 부여대상 - {user}\n\n❔ 사유 - `{reason}`\n\n 처벌내용 - {punish}".format(
+                                admin=self.bot.user.mention, user=target.mention, reason=reason, punish=punish),
+                            timestamp=datetime.datetime.now(),
+                            color=discord.Color.red()
+                        )
+                        wem = discord.Embed(
+                            title="경고가 부여되었습니다!",
+                            description="👮‍♂️ 부여자 - {admin}\n📌 부여대상 - {user}\n\n❔ 사유 - `{reason}`\n\n 처벌내용 - {punish}".format(
+                                admin=self.bot.user.mention, user=target.mention, reason="앞메 행위로 인한 경고",
+                                punish=punish),
+                            timestamp=datetime.datetime.now(),
+                            color=discord.Color.red()
+                        )
+                        await message.channel.send(
+                            content=f"{message.author.mention}, 앞메행위를 멈추어주세요! \n앞메행위로 인해 경고가 부여되었습니다! 주의하세요.", embed=wem)
+                        await self.bot.get_channel(884219305942740992).send(embed=em)
+                        while message.author.id in self.count:
+                            self.count.remove(message.author.id)
+                else:
+                    if message.channel.topic.find("igivt") == -1:
+                        if self.count.count(message.author.id) <= 2:
+                            em = discord.Embed(
+                                title="앞메 감지 🚨",
+                                description="{}님이 앞메를 시도하려는 행위를 감지하였습니다.\n경고 - {}".format(message.author.mention,
+                                                                                          self.count.count(
+                                                                                              message.author.id)),
+                                colour=discord.Color.red()
+                            )
+                            await message.channel.send(embed=em)
+                            em = discord.Embed(
+                                title="앞메 감지 🚨",
+                                description="{}님이 앞메를 시도하려는 행위를 감지하였습니다.\n링크 - {}\n경고 - {}".format(
+                                    message.author.mention, message.content,
+                                    self.count.count(message.author.id)),
+                                colour=discord.Color.red()
+                            )
+                            await self.bot.get_channel(892742664506732574).send(embed=em)
+                        else:
+                            em = discord.Embed(
+                                title="앞메 감지 🚨",
+                                description="{}님이 앞메를 시도하려는 행위를 감지하였습니다.\n경고 - {}".format(message.author.mention,
+                                                                                          self.count.count(
+                                                                                              message.author.id)),
+                                colour=discord.Color.red()
+                            )
+                            await message.channel.send(embed=em)
+                            em = discord.Embed(
+                                title="앞메 감지 🚨",
+                                description="{}님이 앞메를 시도하려는 행위를 감지하였습니다.\n링크 - {}\n경고 - {}".format(
+                                    message.author.mention,
+                                    message.content,
+                                    self.count.count(
+                                        message.author.id)),
+                                colour=discord.Color.red()
+                            )
+                            await self.bot.get_channel(892742664506732574).send(embed=em)
+                            target = message.author
+                            reason = "앞메 행위로 인한 경고"
+                            cur = await self.bot.db_con.execute("SELECT * FROM warn_list WHERE user_id = ?",
+                                                                (target.id,))
+                            datas = await cur.fetchall()
+                            print(datas)
+                            if datas == []:
+                                end = datetime.datetime.utcnow() + datetime.timedelta(days=3)
+                                end = end.strftime("%Y-%m-%d %H:%M")
+                                now = datetime.datetime.utcnow()
+                                now = now.strftime("%Y-%m-%d %H:%M:%S")
+                                timestamp = str(
+                                    time.mktime(datetime.datetime.strptime(now, '%Y-%m-%d %H:%M:%S').timetuple()))[
+                                            :-2]
+                                punish = "🔇 3일 뮤트"
+                                await self.bot.db_con.execute(
+                                    "INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
+                                    (target.id, reason, end, timestamp))
+                            elif len(datas) == 1:
+                                end = datetime.datetime.utcnow() + datetime.timedelta(days=7)
+                                end = end.strftime("%Y-%m-%d %H:%M")
+                                now = datetime.datetime.utcnow()
+                                now = now.strftime("%Y-%m-%d %H:%M:%S")
+                                timestamp = str(
+                                    time.mktime(datetime.datetime.strptime(now, '%Y-%m-%d %H:%M:%S').timetuple()))[
+                                            :-2]
+                                punish = "🔇 7일 뮤트"
+                                await self.bot.db_con.execute(
+                                    "INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
+                                    (target.id, reason, end, timestamp))
+                            else:
+                                end = "2100-12-31 23:59"
+                                now = datetime.datetime.utcnow()
+                                now = now.strftime("%Y-%m-%d %H:%M:%S")
+                                timestamp = str(
+                                    time.mktime(datetime.datetime.strptime(now, '%Y-%m-%d %H:%M:%S').timetuple()))[
+                                            :-2]
+                                punish = "🔇 영구 뮤트"
+                                await self.bot.db_con.execute(
+                                    "INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
+                                    (target.id, reason, end, timestamp))
+                            await self.bot.db_con.execute("INSERT INTO warn_list(user_id,reason,stamp) VALUES (?,?,?)",
+                                                          (target.id, reason + " " + punish, timestamp))
+                            await self.bot.db_con.commit()
+                            await cur.close()
+                            guild = message.guild
+                            mutedRole = discord.utils.get(guild.roles, name="Muted")
+
+                            if not mutedRole:
+                                mutedRole = await guild.create_role(name="Muted")
+                                channels = guild.channels
+                                for channel in channels:
+                                    await channel.set_permissions(mutedRole, speak=False, send_messages=False)
+                            await target.add_roles(mutedRole, reason=reason)
+                            em = discord.Embed(
+                                title="경고가 부여됨",
+                                description="👮‍♂️ 부여자 - {admin}\n📌 부여대상 - {user}\n\n❔ 사유 - `{reason}`\n\n 처벌내용 - {punish}".format(
+                                    admin=self.bot.user.mention, user=target.mention, reason=reason, punish=punish),
+                                timestamp=datetime.datetime.now(),
+                                color=discord.Color.red()
+                            )
+                            wem = discord.Embed(
+                                title="경고가 부여되었습니다!",
+                                description="👮‍♂️ 부여자 - {admin}\n📌 부여대상 - {user}\n\n❔ 사유 - `{reason}`\n\n 처벌내용 - {punish}".format(
+                                    admin=self.bot.user.mention, user=target.mention, reason="앞메 행위로 인한 경고",
+                                    punish=punish),
+                                timestamp=datetime.datetime.now(),
+                                color=discord.Color.red()
+                            )
+                            await message.channel.send(
+                                content=f"{message.author.mention}, 앞메행위를 멈추어주세요! \n앞메행위로 인해 경고가 부여되었습니다! 주의하세요.",
+                                embed=wem)
+                            await self.bot.get_channel(884219305942740992).send(embed=em)
+                            while message.author.id in self.count:
+                                self.count.remove(message.author.id)
 
 
 
