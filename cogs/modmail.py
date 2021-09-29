@@ -92,7 +92,7 @@ class modmail(Cog):
                 timestamp=datetime.datetime.now(),
                 color=discord.Color.red()
             )
-            await message.channel.send(content=f"{message.author.mention}, 스팸행위를 멈추어주세요! \n스팸행위로 인해 경고가 부여되었습니다!",embed=wem)
+            await message.channel.send(content=f"{message.author.mention}, 스팸행위를 멈추어주세요! \n스팸행위로 인해 경고가 부여되었습니다! 주의하세요.",embed=wem)
             await self.bot.get_channel(884219305942740992).send(embed=em)
         if message.author.bot:
             return
