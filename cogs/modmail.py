@@ -85,6 +85,14 @@ class modmail(Cog):
                 timestamp=datetime.datetime.now(),
                 color=discord.Color.red()
             )
+            wem = discord.Embed(
+                title="경고가 부여되었습니다!",
+                description="👮‍♂️ 부여자 - {admin}\n📌 부여대상 - {user}\n\n❔ 사유 - `{reason}`\n\n 처벌내용 - {punish}".format(
+                    admin=self.bot.user.mention, user=target.mention, reason="스팸 행위(맨션도배 또는 일방적 도배)로 인한 경고", punish=punish),
+                timestamp=datetime.datetime.now(),
+                color=discord.Color.red()
+            )
+            await message.channel.send(content=f"{message.author.mention}, 스팸행위를 멈추어주세요! \n스팸행위로 인해 경고가 부여되었습니다!",embed=wem)
             await self.bot.get_channel(884219305942740992).send(embed=em)
         if message.author.bot:
             return
