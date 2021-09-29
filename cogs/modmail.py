@@ -1,6 +1,9 @@
 import asyncio
+import datetime
 import os
 import platform
+import time
+
 import discord
 from PycordPaginator import Paginator
 from discord.ext.commands import command, Cog
@@ -10,6 +13,9 @@ from pycord_components import (
     Select,
     SelectOption,
 )
+from antispam import AntiSpamHandler
+from antispam.ext import AntiSpamTracker
+
 class modmail(Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -18,10 +24,68 @@ class modmail(Cog):
             "892558109770412042":"👮‍♂️ 신고 문의",
             "892558436800290817":"🙌 팀 지원 문의"
         }
-
+        self.bot.handler = AntiSpamHandler(self.bot, no_punish=True)
+        self.bot.tracker = AntiSpamTracker(self.bot.handler,
+                                      3)  # 3 Being how many 'punishment requests' before is_spamming returns True
+        self.bot.handler.register_extension(self.bot.tracker)
 
     @Cog.listener()
     async def on_message(self,message:discord.Message):
+        await self.bot.handler.propagate(message)
+
+        if self.bot.tracker.is_spamming(message):
+            target = message.author
+            reason = "스팸 행위로 인한 경고"
+            cur = await self.bot.db_con.execute("SELECT * FROM warn_list WHERE user_id = ?", (target.id,))
+            datas = await cur.fetchall()
+            print(datas)
+            if datas == []:
+                end = datetime.datetime.utcnow() + datetime.timedelta(days=3)
+                end = end.strftime("%Y-%m-%d %H:%M")
+                now = datetime.datetime.utcnow()
+                now = now.strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = str(time.mktime(datetime.datetime.strptime(now, '%Y-%m-%d %H:%M:%S').timetuple()))[:-2]
+                punish = "🔇 3일 뮤트"
+                await self.bot.db_con.execute("INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
+                                              (target.id, reason, end, timestamp))
+            elif len(datas) == 1:
+                end = datetime.datetime.utcnow() + datetime.timedelta(days=7)
+                end = end.strftime("%Y-%m-%d %H:%M")
+                now = datetime.datetime.utcnow()
+                now = now.strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = str(time.mktime(datetime.datetime.strptime(now, '%Y-%m-%d %H:%M:%S').timetuple()))[:-2]
+                punish = "🔇 7일 뮤트"
+                await self.bot.db_con.execute("INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
+                                              (target.id, reason, end, timestamp))
+            else:
+                end = "2100-12-31 23:59"
+                now = datetime.datetime.utcnow()
+                now = now.strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = str(time.mktime(datetime.datetime.strptime(now, '%Y-%m-%d %H:%M:%S').timetuple()))[:-2]
+                punish = "🔇 영구 뮤트"
+                await self.bot.db_con.execute("INSERT INTO mute_list(user_id,reason,end_dates,stamp) VALUES (?,?,?,?)",
+                                              (target.id, reason, end, timestamp))
+            await self.bot.db_con.execute("INSERT INTO warn_list(user_id,reason,stamp) VALUES (?,?,?)",
+                                          (target.id, reason + " " + punish, timestamp))
+            await self.bot.db_con.commit()
+            await cur.close()
+            guild = message.guild
+            mutedRole = discord.utils.get(guild.roles, name="Muted")
+
+            if not mutedRole:
+                mutedRole = await guild.create_role(name="Muted")
+                channels = guild.channels
+                for channel in channels:
+                    await channel.set_permissions(mutedRole, speak=False, send_messages=False)
+            await target.add_roles(mutedRole, reason=reason)
+            em = discord.Embed(
+                title="경고가 부여됨",
+                description="👮‍♂️ 부여자 - {admin}\n📌 부여대상 - {user}\n\n❔ 사유 - `{reason}`\n\n 처벌내용 - {punish}".format(
+                    admin=self.bot.user.mention, user=target.mention, reason=reason, punish=punish),
+                timestamp=datetime.datetime.now(),
+                color=discord.Color.red()
+            )
+            await self.bot.get_channel(884219305942740992).send(embed=em)
         if message.author.bot:
             return
         if isinstance(message.channel, discord.DMChannel)and message.author != self.bot.user:
