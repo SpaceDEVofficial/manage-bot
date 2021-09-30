@@ -8,6 +8,7 @@ import time
 import discord
 from PycordPaginator import Paginator
 from discord.ext.commands import command, Cog
+import discord.ext.commands as commands
 from pycord_components import (
     Button,
     ButtonStyle,
@@ -31,6 +32,42 @@ class modmail(Cog):
                                       3)  # 3 Being how many 'punishment requests' before is_spamming returns True
         self.bot.handler.register_extension(self.bot.tracker)
         self.count = []
+
+    @command()
+    @commands.has_role('Mod')
+    async def uncount(self,ctx):
+        if self.count==[]:
+            await ctx.reply("empty count!")
+            return
+        msg = await ctx.reply(
+            "** **",
+            components=[
+                    Select(
+                        placeholder="Select",
+                        options=[
+                            SelectOption(label=self.bot.get_guild(847729860881154078).get_member(i).display_name, value=i) for i in self.count
+                        ],
+                    ),
+            ],
+        )
+        try:
+            interaction = await self.bot.wait_for("select_option", check=lambda i: i.user.id == ctx.author.id and i.message.id == msg.id,timeout=30)
+            value = interaction.values[0]
+            mem = self.bot.get_guild(847729860881154078).get_member(value)
+            #stamp = str(time.mktime(datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S').timetuple()))[:-2]
+        except asyncio.TimeoutError:
+            await msg.delete()
+            return
+        self.count.remove(value)
+        em = discord.Embed(
+            title="앞메 경고가 취소됨",
+            description="👮‍♂️ 경고취소자 - {admin}\n📌 대상 - {user}\n\n❔ 사유 - `{reason}`".format(
+                admin=ctx.author.mention, user=mem.mention, reason="의도하지않은 앞메 또는 관리자 재량."),
+            timestamp=datetime.datetime.now(),
+            color=discord.Color.green()
+        )
+        await msg.edit("✅ SUCCESS!",embed=em,components=[])
+        await self.bot.get_channel(884219305942740992).send(embed=em)
 
     @Cog.listener()
     async def on_message(self,message:discord.Message):
@@ -156,9 +193,9 @@ class modmail(Cog):
             inv = INVITE.search(message.content)
 
             if bool(inv):
-                await message.delete()
-                self.count.append(message.author.id)
                 if message.channel.topic is None:
+                    await message.delete()
+                    self.count.append(message.author.id)
                     if self.count.count(message.author.id) <= 2:
 
                         em = discord.Embed(
@@ -264,6 +301,8 @@ class modmail(Cog):
                             self.count.remove(message.author.id)
                 else:
                     if message.channel.topic.find("igivt") == -1:
+                        await message.delete()
+                        self.count.append(message.author.id)
                         if self.count.count(message.author.id) <= 2:
                             em = discord.Embed(
                                 title="앞메 감지 🚨",
